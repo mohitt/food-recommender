@@ -36,7 +36,7 @@ Frontend (Browser)
 
 ### Prerequisites
 
-- .NET 9.0 SDK
+- .NET 8.0 SDK
 - Modern web browser with microphone support
 - OpenAI API key
 - Yelp API key
