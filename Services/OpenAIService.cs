@@ -14,7 +14,11 @@ public class OpenAIService
 
     public OpenAIService(IConfiguration configuration)
     {
-        var apiKey = configuration["OpenAI:ApiKey"] ?? throw new InvalidOperationException("OpenAI API key not configured");
+        // Try to get API key from environment variable first, then configuration
+        var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY") 
+                    ?? configuration["OpenAI:ApiKey"] 
+                    ?? throw new InvalidOperationException("OpenAI API key not configured. Set OPENAI_API_KEY environment variable or configure in appsettings.json");
+        
         _openAIClient = new OpenAIClient(apiKey);
         _audioClient = _openAIClient.GetAudioClient("whisper-1");
         _chatClient = _openAIClient.GetChatClient("gpt-4");

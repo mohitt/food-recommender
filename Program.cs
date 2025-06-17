@@ -1,5 +1,17 @@
 using FoodRecommender.Hubs;
 using FoodRecommender.Services;
+using DotNetEnv;
+
+// Load environment variables from .env files
+// .env.local takes precedence over .env
+if (File.Exists(".env.local"))
+{
+    Env.Load(".env.local");
+}
+else if (File.Exists(".env"))
+{
+    Env.Load(".env");
+}
 
 var builder = WebApplication.CreateBuilder(args);
 

@@ -11,7 +11,12 @@ public class YelpService
     public YelpService(HttpClient httpClient, IConfiguration configuration)
     {
         _httpClient = httpClient;
-        _apiKey = configuration["Yelp:ApiKey"] ?? throw new InvalidOperationException("Yelp API key not configured");
+        
+        // Try to get API key from environment variable first, then configuration
+        _apiKey = Environment.GetEnvironmentVariable("YELP_API_KEY") 
+                 ?? configuration["Yelp:ApiKey"] 
+                 ?? throw new InvalidOperationException("Yelp API key not configured. Set YELP_API_KEY environment variable or configure in appsettings.json");
+        
         _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
     }
 

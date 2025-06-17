@@ -53,6 +53,26 @@ dotnet restore
 
 ### 2. Configure API Keys
 
+You can configure API keys using either environment variables (.env files) or appsettings.json. Environment variables take precedence.
+
+#### Option A: Using Environment Variables (Recommended)
+
+1. Copy the environment template:
+   ```bash
+   cp env.template .env.local
+   ```
+
+2. Edit `.env.local` and add your actual API keys:
+   ```bash
+   # OpenAI API Key - Get from https://platform.openai.com/api-keys
+   OPENAI_API_KEY=sk-your-actual-openai-api-key-here
+   
+   # Yelp API Key - Get from https://www.yelp.com/developers  
+   YELP_API_KEY=your-actual-yelp-api-key-here
+   ```
+
+#### Option B: Using appsettings.json
+
 Edit `appsettings.json` and add your API keys:
 
 ```json
@@ -72,6 +92,8 @@ Edit `appsettings.json` and add your API keys:
   }
 }
 ```
+
+**Note**: Environment variables take precedence over appsettings.json values.
 
 #### Getting API Keys
 
@@ -159,6 +181,19 @@ The application recognizes these types of requests:
 
 ## 🔧 Configuration Options
 
+### Environment Configuration
+
+The application loads environment variables in the following order (highest to lowest precedence):
+
+1. **`.env.local`** - Your local environment variables (gitignored)
+2. **`.env`** - Default environment variables (committed to repo)
+3. **`appsettings.json`** - Configuration file fallback
+
+This allows you to:
+- Keep sensitive API keys out of version control (`.env.local`)
+- Share default configuration with your team (`.env`)
+- Maintain backward compatibility (`appsettings.json`)
+
 ### Audio Settings
 
 The application uses optimized audio settings:
@@ -238,10 +273,13 @@ Approximate costs per request:
 
 ## 🔒 Security Notes
 
-- API keys should never be exposed in client-side code
+- **API keys should never be exposed in client-side code**
+- **Use `.env.local` for sensitive data** - it's automatically gitignored
+- **Never commit real API keys** to version control
 - Consider implementing rate limiting for production
 - Use HTTPS in production environments
 - Validate all user inputs
+- The `env.template` file shows the required environment variables
 
 ## 🤝 Contributing
 
