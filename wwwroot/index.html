@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food Recommender - AI-Powered Restaurant Finder</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🍽️ Food Recommender</h1>
+            <p>Speak to discover amazing restaurants near you</p>
+        </header>
+
+        <main>
+            <div class="audio-controls">
+                <button id="startBtn" class="btn btn-primary">
+                    <span class="icon">🎤</span>
+                    Start Recording
+                </button>
+                <button id="stopBtn" class="btn btn-secondary" disabled>
+                    <span class="icon">⏹️</span>
+                    Stop Recording
+                </button>
+            </div>
+
+            <div class="status-section">
+                <div id="status" class="status-indicator">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Ready to listen</span>
+                </div>
+                
+                <div id="connectionStatus" class="connection-status">
+                    <span class="connection-dot"></span>
+                    <span class="connection-text">Connecting...</span>
+                </div>
+            </div>
+
+            <div class="response-section">
+                <div class="transcription-box">
+                    <h3>What you said:</h3>
+                    <div id="transcription" class="transcription-content">
+                        Your speech will appear here...
+                    </div>
+                </div>
+
+                <div class="recommendation-box">
+                    <h3>Restaurant Recommendations:</h3>
+                    <div id="recommendations" class="recommendation-content">
+                        Ask me about restaurants near you!
+                    </div>
+                </div>
+
+                <div class="audio-playback">
+                    <h3>Audio Response:</h3>
+                    <audio id="responseAudio" controls style="width: 100%; margin-top: 10px;">
+                        Your browser does not support the audio element.
+                    </audio>
+                    <div id="audioStatus" class="audio-status">
+                        No audio response yet
+                    </div>
+                </div>
+            </div>
+
+            <div class="instructions">
+                <h3>How to use:</h3>
+                <ul>
+                    <li>🎯 <strong>Click "Start Recording"</strong> and speak your request</li>
+                    <li>📍 <strong>Include your zip code</strong> in your request (e.g., "Find restaurants near 10001")</li>
+                    <li>🍕 <strong>Specify cuisine type</strong> if you want something specific (e.g., "Find Italian restaurants near 90210")</li>
+                    <li>⏹️ <strong>Click "Stop Recording"</strong> when finished</li>
+                    <li>🔊 <strong>Listen to the AI response</strong> with restaurant recommendations</li>
+                </ul>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by OpenAI Whisper, GPT-4, and Yelp API</p>
+        </footer>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html> 

@@ -1,0 +1,171 @@
+using FoodRecommender.Models;
+using System.Collections.Concurrent;
+
+namespace FoodRecommender.Services;
+
+public class AudioProcessingService
+{
+    private readonly ConcurrentDictionary<string, List<byte[]>> _audioChunks = new();
+    private readonly OpenAIService _openAIService;
+    private readonly YelpService _yelpService;
+
+    public AudioProcessingService(OpenAIService openAIService, YelpService yelpService)
+    {
+        _openAIService = openAIService;
+        _yelpService = yelpService;
+    }
+
+    public void AddAudioChunk(string sessionId, byte[] audioChunk)
+    {
+        _audioChunks.AddOrUpdate(
+            sessionId,
+            new List<byte[]> { audioChunk },
+            (key, existing) =>
+            {
+                existing.Add(audioChunk);
+                return existing;
+            });
+    }
+
+    public async Task<FoodRecommendationResponse> ProcessCompleteAudioAsync(string sessionId)
+    {
+        try
+        {
+                    if (!_audioChunks.TryGetValue(sessionId, out var chunks))
+        {
+            return await CreateErrorResponse(sessionId, "No audio data found for session");
+        }
+
+            // Combine all audio chunks
+            var combinedAudio = CombineAudioChunks(chunks);
+            
+            // Transcribe audio using OpenAI Whisper
+            var transcribedText = await _openAIService.TranscribeAudioAsync(combinedAudio);
+            
+            if (string.IsNullOrWhiteSpace(transcribedText))
+            {
+                return await CreateErrorResponse(sessionId, "Could not transcribe audio");
+            }
+
+            // Analyze intent using OpenAI GPT
+            var intentRequest = await _openAIService.AnalyzeIntentAsync(transcribedText, sessionId);
+            
+            // Process based on intent
+            var responseText = await ProcessIntentAsync(intentRequest);
+            
+            // Convert response to speech
+            var audioData = await _openAIService.ConvertTextToSpeechAsync(responseText);
+
+            // Clean up chunks
+            _audioChunks.TryRemove(sessionId, out _);
+
+            return new FoodRecommendationResponse
+            {
+                SessionId = sessionId,
+                ResponseText = responseText,
+                AudioData = audioData,
+                IsComplete = true
+            };
+        }
+        catch (Exception ex)
+        {
+            _audioChunks.TryRemove(sessionId, out _);
+            return await CreateErrorResponse(sessionId, $"Error processing audio: {ex.Message}");
+        }
+    }
+
+    private async Task<string> ProcessIntentAsync(IntentRequest intentRequest)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(intentRequest.ZipCode))
+            {
+                return "I'd be happy to help you find restaurants! Could you please provide your zip code so I can find places near you?";
+            }
+
+            List<YelpBusiness> restaurants;
+
+            switch (intentRequest.Intent)
+            {
+                case "finding cuisine near me":
+                    restaurants = await _yelpService.GetTopRatedRestaurantsAsync(intentRequest.ZipCode);
+                    break;
+
+                case "find specific cuisine near me":
+                    if (string.IsNullOrEmpty(intentRequest.CuisineType))
+                    {
+                        return "I heard you're looking for a specific cuisine. Could you please specify what type of food you're in the mood for?";
+                    }
+                    restaurants = await _yelpService.GetCuisineSpecificRestaurantsAsync(intentRequest.ZipCode, intentRequest.CuisineType);
+                    break;
+
+                default:
+                    return "Really sorry, can't help you with this. I can help you find restaurants near you if you provide your zip code!";
+            }
+
+            if (restaurants.Count == 0)
+            {
+                return "I couldn't find any restaurants matching your criteria in that area. Please try a different location or cuisine type.";
+            }
+
+            // Generate human-readable response using OpenAI
+            return await _openAIService.GenerateResponseTextAsync(restaurants, intentRequest.Intent);
+        }
+        catch (Exception)
+        {
+            return "Really sorry, can't help you with this";
+        }
+    }
+
+    private byte[] CombineAudioChunks(List<byte[]> chunks)
+    {
+        var totalLength = chunks.Sum(chunk => chunk.Length);
+        var combinedAudio = new byte[totalLength];
+        var offset = 0;
+
+        foreach (var chunk in chunks)
+        {
+            Buffer.BlockCopy(chunk, 0, combinedAudio, offset, chunk.Length);
+            offset += chunk.Length;
+        }
+
+        return combinedAudio;
+    }
+
+    private async Task<FoodRecommendationResponse> CreateErrorResponse(string sessionId, string errorMessage)
+    {
+        try
+        {
+            var audioData = await _openAIService.ConvertTextToSpeechAsync("Really sorry, can't help you with this");
+            
+            return new FoodRecommendationResponse
+            {
+                SessionId = sessionId,
+                ResponseText = "Really sorry, can't help you with this",
+                AudioData = audioData,
+                IsComplete = true
+            };
+        }
+        catch
+        {
+            return new FoodRecommendationResponse
+            {
+                SessionId = sessionId,
+                ResponseText = "Really sorry, can't help you with this",
+                AudioData = Array.Empty<byte>(),
+                IsComplete = true
+            };
+        }
+    }
+
+    public IEnumerable<byte[]> CreateAudioChunks(byte[] audioData, int chunkSize = 4096)
+    {
+        for (int i = 0; i < audioData.Length; i += chunkSize)
+        {
+            var remainingBytes = Math.Min(chunkSize, audioData.Length - i);
+            var chunk = new byte[remainingBytes];
+            Buffer.BlockCopy(audioData, i, chunk, 0, remainingBytes);
+            yield return chunk;
+        }
+    }
+} 
