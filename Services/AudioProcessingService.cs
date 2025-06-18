@@ -173,6 +173,52 @@ public class AudioProcessingService
         }
     }
 
+    public async Task<FoodRecommendationResponse> ProcessAudioToSpeech(byte[] audioData)
+    {
+        var sessionId = Guid.NewGuid().ToString();
+        
+        try
+        {
+            Console.WriteLine($"🔄 [AudioProcessor] Starting audio to speech processing for session: {sessionId}");
+            Console.WriteLine($"📦 [AudioProcessor] Processing audio data - Size: {audioData.Length} bytes");
+            
+            // Transcribe audio using OpenAI Whisper
+            var transcribedText = await _openAIService.TranscribeAudioAsync(audioData);
+            
+            if (string.IsNullOrWhiteSpace(transcribedText))
+            {
+                Console.WriteLine($"❌ [AudioProcessor] Transcription returned empty text for session: {sessionId}");
+                return await CreateErrorResponse(sessionId, "Could not transcribe audio");
+            }
+
+            // Analyze intent using OpenAI GPT
+            var intentRequest = await _openAIService.AnalyzeIntentAsync(transcribedText, sessionId);
+            
+            // Process based on intent
+            Console.WriteLine($"🎯 [AudioProcessor] Processing intent: {intentRequest.Intent}");
+            var responseText = await ProcessIntentAsync(intentRequest);
+            Console.WriteLine($"💬 [AudioProcessor] Generated response text: \"{responseText.Substring(0, Math.Min(100, responseText.Length))}{(responseText.Length > 100 ? "..." : "")}\"");
+            
+            // Convert response to speech
+            var audioResponseData = await _openAIService.ConvertTextToSpeechAsync(responseText);
+
+            Console.WriteLine($"✅ [AudioProcessor] Audio to speech processing finished successfully for session: {sessionId}");
+            
+            return new FoodRecommendationResponse
+            {
+                SessionId = sessionId,
+                ResponseText = responseText,
+                AudioData = audioResponseData,
+                IsComplete = true
+            };
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ [AudioProcessor] Error processing audio to speech for session {sessionId}: {ex.Message}");
+            return await CreateErrorResponse(sessionId, $"Error processing audio: {ex.Message}");
+        }
+    }
+
     public IEnumerable<byte[]> CreateAudioChunks(byte[] audioData, int chunkSize = 4096)
     {
         for (int i = 0; i < audioData.Length; i += chunkSize)

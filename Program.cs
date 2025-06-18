@@ -1,5 +1,5 @@
-using FoodRecommender.Hubs;
 using FoodRecommender.Services;
+using FoodRecommender.WebSockets;
 using DotNetEnv;
 
 // Load environment variables from .env files
@@ -16,13 +16,13 @@ else if (File.Exists(".env"))
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
-builder.Services.AddSignalR();
 builder.Services.AddHttpClient();
 
 // Register our services
 builder.Services.AddScoped<OpenAIService>();
 builder.Services.AddScoped<YelpService>();
 builder.Services.AddScoped<AudioProcessingService>();
+builder.Services.AddSingleton<FoodRecommender.WebSockets.WebSocketManager>();
 
 // Add CORS
 builder.Services.AddCors(options =>
@@ -46,12 +46,33 @@ if (app.Environment.IsDevelopment())
 app.UseRouting();
 app.UseCors();
 
+// Enable WebSocket support
+app.UseWebSockets();
+
 // Serve static files
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-// Map SignalR hub
-app.MapHub<AudioHub>("/audiohub");
+// WebSocket endpoint
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path == "/ws")
+    {
+        if (context.WebSockets.IsWebSocketRequest)
+        {
+            var webSocketManager = context.RequestServices.GetRequiredService<FoodRecommender.WebSockets.WebSocketManager>();
+            await webSocketManager.HandleWebSocketAsync(context);
+        }
+        else
+        {
+            context.Response.StatusCode = 400;
+        }
+    }
+    else
+    {
+        await next(context);
+    }
+});
 
 // Simple health check endpoint
 app.MapGet("/health", () => "Food Recommender API is running!");
