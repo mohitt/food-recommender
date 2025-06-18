@@ -49,11 +49,13 @@ class FoodRecommenderApp {
         });
 
         this.connection.on("ProcessingStarted", (sessionId) => {
+            console.log(`🔄 [Client] Server started processing for session: ${sessionId}`);
             this.updateStatus("processing", "Processing your request...");
             this.audioStatus.textContent = "Processing audio response...";
         });
 
         this.connection.on("TextResponse", (responseText) => {
+            console.log(`📝 [Client] Received text response:`, responseText);
             this.transcription.textContent = "Processing...";
             this.recommendations.textContent = responseText;
         });
@@ -64,11 +66,12 @@ class FoodRecommenderApp {
 
         // New binary audio chunk handler
         this.connection.on("AudioChunkBinary", (chunkData, chunkIndex, isLast) => {
+            console.log(`📥 [Client] Received binary audio chunk ${chunkIndex}, size: ${chunkData.length} bytes, isLast: ${isLast}`);
             this.handleAudioChunkBinary(chunkData, chunkIndex, isLast);
         });
 
         this.connection.on("AudioMetadata", (metadata) => {
-            console.log("Audio metadata received:", metadata);
+            console.log(`📊 [Client] Audio metadata received:`, metadata);
             this.audioMetadata = metadata;
             this.responseAudioChunks = []; // Reset for new binary audio
         });
@@ -172,23 +175,30 @@ class FoodRecommenderApp {
 
     async processRecording() {
         if (this.audioChunks.length === 0) {
+            console.log("⚠️ [Client] No audio chunks recorded");
             this.updateStatus("ready", "No audio recorded");
             return;
         }
 
         try {
+            console.log(`🎙️ [Client] Processing ${this.audioChunks.length} audio chunks`);
+            
             // Combine all audio chunks into a single blob
             const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+            
+            console.log(`📦 [Client] Combined audio blob size: ${audioBlob.size} bytes`);
             
             // Convert to array buffer
             const arrayBuffer = await audioBlob.arrayBuffer();
             const audioData = new Uint8Array(arrayBuffer);
 
+            console.log(`🔢 [Client] Audio data array size: ${audioData.length} bytes`);
+
             // Send audio data in chunks
             await this.sendAudioInChunks(audioData);
 
         } catch (error) {
-            console.error('Error processing recording:', error);
+            console.error('❌ [Client] Error processing recording:', error);
             this.updateStatus("ready", "Error processing audio");
         }
     }
@@ -197,12 +207,16 @@ class FoodRecommenderApp {
         const chunkSize = 8192; // 8KB chunks
         const totalChunks = Math.ceil(audioData.length / chunkSize);
 
+        console.log(`📡 [Client] Sending audio in ${totalChunks} chunks of ${chunkSize} bytes each`);
+
         for (let i = 0; i < totalChunks; i++) {
             const start = i * chunkSize;
             const end = Math.min(start + chunkSize, audioData.length);
             const chunk = audioData.slice(start, end);
             
             try {
+                console.log(`📤 [Client] Sending chunk ${i + 1}/${totalChunks} (${chunk.length} bytes)${i === totalChunks - 1 ? ' - FINAL CHUNK' : ''}`);
+                
                 // Send binary data directly - much more efficient!
                 await this.connection.invoke("SendAudioBinary", chunk, i === totalChunks - 1, this.sessionId);
                 
@@ -211,11 +225,13 @@ class FoodRecommenderApp {
                     await this.delay(50);
                 }
             } catch (error) {
-                console.error('Error sending audio chunk:', error);
+                console.error(`❌ [Client] Error sending audio chunk ${i + 1}:`, error);
                 this.updateStatus("ready", "Error sending audio");
                 return;
             }
         }
+        
+        console.log(`✅ [Client] All ${totalChunks} audio chunks sent successfully`);
     }
 
     // Legacy method for backward compatibility
@@ -337,11 +353,15 @@ class FoodRecommenderApp {
 
     async combineAndPlayAudioBinary() {
         try {
+            console.log(`🔧 [Client] Combining ${this.responseAudioChunks.length} binary audio chunks`);
+            
             // Sort chunks by index to ensure proper order
             this.responseAudioChunks.sort((a, b) => a.index - b.index);
 
             // Calculate total length
             const totalLength = this.responseAudioChunks.reduce((total, chunk) => total + chunk.data.length, 0);
+            
+            console.log(`📏 [Client] Total combined audio length: ${totalLength} bytes`);
             
             // Combine all binary chunks directly - much more efficient!
             const combinedAudio = new Uint8Array(totalLength);
@@ -352,9 +372,13 @@ class FoodRecommenderApp {
                 offset += chunk.data.length;
             }
 
+            console.log(`🎵 [Client] Audio chunks combined successfully`);
+
             // Create blob and URL for audio playback
             const audioBlob = new Blob([combinedAudio], { type: 'audio/mpeg' });
             const audioUrl = URL.createObjectURL(audioBlob);
+            
+            console.log(`🔗 [Client] Created audio blob URL for playback`);
             
             // Set up the audio element
             this.responseAudio.src = audioUrl;
@@ -363,20 +387,22 @@ class FoodRecommenderApp {
             // Auto-play the response (if browser allows)
             try {
                 await this.responseAudio.play();
+                console.log(`▶️ [Client] Started playing binary audio response`);
                 this.audioStatus.textContent = "Playing binary audio response";
             } catch (playError) {
-                console.log("Auto-play prevented by browser:", playError);
+                console.log("⚠️ [Client] Auto-play prevented by browser:", playError);
                 this.audioStatus.textContent = "Binary audio response ready - click play to listen";
             }
 
             // Clean up old URL when audio ends
             this.responseAudio.addEventListener('ended', () => {
+                console.log(`🏁 [Client] Audio playback finished`);
                 URL.revokeObjectURL(audioUrl);
                 this.audioStatus.textContent = "Binary audio response finished";
             }, { once: true });
 
         } catch (error) {
-            console.error('Error combining binary audio chunks:', error);
+            console.error('❌ [Client] Error combining binary audio chunks:', error);
             this.audioStatus.textContent = "Error playing binary audio response";
         }
     }

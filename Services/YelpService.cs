@@ -27,20 +27,40 @@ public class YelpService
             var term = string.IsNullOrEmpty(cuisineType) ? "restaurants" : $"{cuisineType} restaurants";
             var url = $"https://api.yelp.com/v3/businesses/search?term={Uri.EscapeDataString(term)}&location={zipCode}&sort_by=rating&limit=10";
 
+            Console.WriteLine($"🍕 [Yelp] Searching restaurants - Term: '{term}', Location: {zipCode}");
+            Console.WriteLine($"🌐 [Yelp] API URL: {url}");
+
             var response = await _httpClient.GetAsync(url);
+            
+            Console.WriteLine($"📡 [Yelp] API Response Status: {response.StatusCode}");
             
             if (!response.IsSuccessStatusCode)
             {
+                Console.WriteLine($"❌ [Yelp] API error: {response.StatusCode} - {response.ReasonPhrase}");
                 throw new Exception($"Yelp API error: {response.StatusCode}");
             }
 
             var content = await response.Content.ReadAsStringAsync();
             var yelpResponse = JsonConvert.DeserializeObject<YelpResponse>(content);
+            var businesses = yelpResponse?.Businesses ?? new List<YelpBusiness>();
 
-            return yelpResponse?.Businesses ?? new List<YelpBusiness>();
+            Console.WriteLine($"🏪 [Yelp] Found {businesses.Count} restaurants");
+            
+            foreach (var business in businesses.Take(3)) // Log first 3 for brevity
+            {
+                Console.WriteLine($"   - {business.Name} (Rating: {business.Rating}/5, Reviews: {business.ReviewCount})");
+            }
+            
+            if (businesses.Count > 3)
+            {
+                Console.WriteLine($"   ... and {businesses.Count - 3} more restaurants");
+            }
+
+            return businesses;
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"❌ [Yelp] Failed to search restaurants: {ex.Message}");
             throw new Exception($"Failed to search restaurants: {ex.Message}", ex);
         }
     }

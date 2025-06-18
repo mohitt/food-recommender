@@ -28,13 +28,19 @@ public class OpenAIService
     {
         try
         {
+            Console.WriteLine($"🎤 [OpenAI] Starting audio transcription - Audio size: {audioData.Length} bytes");
+            
             using var stream = new MemoryStream(audioData);
             var audioTranscription = await _audioClient.TranscribeAudioAsync(stream, "audio.wav");
             
-            return audioTranscription.Value.Text;
+            var transcribedText = audioTranscription.Value.Text;
+            Console.WriteLine($"📝 [OpenAI] Transcription completed: \"{transcribedText}\"");
+            
+            return transcribedText;
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"❌ [OpenAI] Transcription failed: {ex.Message}");
             throw new Exception($"Failed to transcribe audio: {ex.Message}", ex);
         }
     }
@@ -43,6 +49,8 @@ public class OpenAIService
     {
         try
         {
+            Console.WriteLine($"🧠 [OpenAI] Starting intent analysis for: \"{transcribedText}\"");
+            
             var systemPrompt = @"You are an AI assistant that analyzes user intent for a food recommendation system. 
             Analyze the following text and extract:
             1. Intent: Either 'finding cuisine near me' or 'find specific cuisine near me' or 'unknown'
@@ -66,11 +74,13 @@ public class OpenAIService
 
             var response = await _chatClient.CompleteChatAsync(messages);
             var responseText = response.Value.Content[0].Text;
+            
+            Console.WriteLine($"🤖 [OpenAI] GPT-4 raw response: {responseText}");
 
             // Parse the JSON response
             var intentData = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(responseText);
             
-            return new IntentRequest
+            var intentRequest = new IntentRequest
             {
                 TranscribedText = transcribedText,
                 Intent = intentData?.intent ?? "unknown",
@@ -78,9 +88,18 @@ public class OpenAIService
                 CuisineType = intentData?.cuisineType,
                 SessionId = sessionId
             };
+            
+            Console.WriteLine($"🎯 [OpenAI] Intent analysis result:");
+            Console.WriteLine($"   - Intent: {intentRequest.Intent}");
+            Console.WriteLine($"   - Zip Code: {intentRequest.ZipCode ?? "Not provided"}");
+            Console.WriteLine($"   - Cuisine Type: {intentRequest.CuisineType ?? "Not specified"}");
+            
+            return intentRequest;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Console.WriteLine($"❌ [OpenAI] Intent analysis failed: {ex.Message}");
+            
             return new IntentRequest
             {
                 TranscribedText = transcribedText,
@@ -122,14 +141,22 @@ public class OpenAIService
     {
         try
         {
+            Console.WriteLine($"🔊 [OpenAI] Starting text-to-speech conversion - Text length: {text.Length} characters");
+            Console.WriteLine($"📄 [OpenAI] TTS Text: \"{text.Substring(0, Math.Min(100, text.Length))}{(text.Length > 100 ? "..." : "")}\"");
+            
             var audioResponse = await _audioClient.GenerateSpeechAsync(text, GeneratedSpeechVoice.Alloy);
             
             using var memoryStream = new MemoryStream();
             await audioResponse.Value.ToStream().CopyToAsync(memoryStream);
-            return memoryStream.ToArray();
+            var audioData = memoryStream.ToArray();
+            
+            Console.WriteLine($"🎵 [OpenAI] TTS completed - Generated audio size: {audioData.Length} bytes");
+            
+            return audioData;
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"❌ [OpenAI] Text-to-speech failed: {ex.Message}");
             throw new Exception($"Failed to convert text to speech: {ex.Message}", ex);
         }
     }

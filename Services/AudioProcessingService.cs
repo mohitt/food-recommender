@@ -17,33 +17,42 @@ public class AudioProcessingService
 
     public void AddAudioChunk(string sessionId, byte[] audioChunk)
     {
-        _audioChunks.AddOrUpdate(
+        var chunkCount = _audioChunks.AddOrUpdate(
             sessionId,
             new List<byte[]> { audioChunk },
             (key, existing) =>
             {
                 existing.Add(audioChunk);
                 return existing;
-            });
+            }).Count;
+            
+        Console.WriteLine($"📦 [AudioProcessor] Added audio chunk #{chunkCount} for session {sessionId} - Size: {audioChunk.Length} bytes");
     }
 
-    public async Task<FoodRecommendationResponse> ProcessCompleteAudioAsync(string sessionId)
+        public async Task<FoodRecommendationResponse> ProcessCompleteAudioAsync(string sessionId)
     {
         try
         {
-                    if (!_audioChunks.TryGetValue(sessionId, out var chunks))
-        {
-            return await CreateErrorResponse(sessionId, "No audio data found for session");
-        }
+            Console.WriteLine($"🔄 [AudioProcessor] Starting complete audio processing for session: {sessionId}");
+            
+            if (!_audioChunks.TryGetValue(sessionId, out var chunks))
+            {
+                Console.WriteLine($"❌ [AudioProcessor] No audio chunks found for session: {sessionId}");
+                return await CreateErrorResponse(sessionId, "No audio data found for session");
+            }
+
+            Console.WriteLine($"📦 [AudioProcessor] Found {chunks.Count} audio chunks for session: {sessionId}");
 
             // Combine all audio chunks
             var combinedAudio = CombineAudioChunks(chunks);
+            Console.WriteLine($"🔗 [AudioProcessor] Combined audio chunks - Total size: {combinedAudio.Length} bytes");
             
             // Transcribe audio using OpenAI Whisper
             var transcribedText = await _openAIService.TranscribeAudioAsync(combinedAudio);
             
             if (string.IsNullOrWhiteSpace(transcribedText))
             {
+                Console.WriteLine($"❌ [AudioProcessor] Transcription returned empty text for session: {sessionId}");
                 return await CreateErrorResponse(sessionId, "Could not transcribe audio");
             }
 
@@ -51,14 +60,19 @@ public class AudioProcessingService
             var intentRequest = await _openAIService.AnalyzeIntentAsync(transcribedText, sessionId);
             
             // Process based on intent
+            Console.WriteLine($"🎯 [AudioProcessor] Processing intent: {intentRequest.Intent}");
             var responseText = await ProcessIntentAsync(intentRequest);
+            Console.WriteLine($"💬 [AudioProcessor] Generated response text: \"{responseText.Substring(0, Math.Min(100, responseText.Length))}{(responseText.Length > 100 ? "..." : "")}\"");
             
             // Convert response to speech
             var audioData = await _openAIService.ConvertTextToSpeechAsync(responseText);
 
             // Clean up chunks
             _audioChunks.TryRemove(sessionId, out _);
+            Console.WriteLine($"🧹 [AudioProcessor] Cleaned up audio chunks for session: {sessionId}");
 
+            Console.WriteLine($"✅ [AudioProcessor] Complete audio processing finished successfully for session: {sessionId}");
+            
             return new FoodRecommendationResponse
             {
                 SessionId = sessionId,
@@ -69,6 +83,7 @@ public class AudioProcessingService
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"❌ [AudioProcessor] Error processing audio for session {sessionId}: {ex.Message}");
             _audioChunks.TryRemove(sessionId, out _);
             return await CreateErrorResponse(sessionId, $"Error processing audio: {ex.Message}");
         }

@@ -65,22 +65,27 @@ public class AudioHub : Hub
         {
             var actualSessionId = string.IsNullOrEmpty(sessionId) ? Context.ConnectionId : sessionId;
             
+            Console.WriteLine($"🔌 [AudioHub] Received binary audio chunk - Session: {actualSessionId}, Size: {audioData.Length} bytes, IsLast: {isLast}");
+            
             // Direct binary processing - no JSON conversion needed!
             _audioProcessingService.AddAudioChunk(actualSessionId, audioData);
 
             // If this is the last chunk, process the complete audio
             if (isLast)
             {
+                Console.WriteLine($"🎬 [AudioHub] Received final chunk, starting complete audio processing for session: {actualSessionId}");
                 await Clients.Caller.SendAsync("ProcessingStarted", actualSessionId);
                 
                 var response = await _audioProcessingService.ProcessCompleteAudioAsync(actualSessionId);
                 
+                Console.WriteLine($"📤 [AudioHub] Starting binary audio response streaming for session: {actualSessionId}");
                 // Stream the audio response back as binary
                 await StreamAudioResponseBinary(response);
             }
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"❌ [AudioHub] Error in SendAudioBinary for session {sessionId}: {ex.Message}");
             await Clients.Caller.SendAsync("Error", $"Error processing audio: {ex.Message}");
         }
     }
