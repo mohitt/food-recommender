@@ -28,10 +28,11 @@ public class OpenAIService
     {
         try
         {
-            Console.WriteLine($"🎤 [OpenAI] Starting audio transcription - Audio size: {audioData.Length} bytes");
+            Console.WriteLine($"🎤 [OpenAI] Starting audio transcription - WebM audio size: {audioData.Length} bytes");
             
             using var stream = new MemoryStream(audioData);
-            var audioTranscription = await _audioClient.TranscribeAudioAsync(stream, "audio.wav");
+            // OpenAI Whisper supports WebM format directly - much more efficient than WAV
+            var audioTranscription = await _audioClient.TranscribeAudioAsync(stream, "audio.webm");
             
             var transcribedText = audioTranscription.Value.Text;
             Console.WriteLine($"📝 [OpenAI] Transcription completed: \"{transcribedText}\"");

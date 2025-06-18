@@ -136,27 +136,35 @@ public static class BinaryMessage
     public static (MessageType messageType, string sessionId, byte[] data) ParseMessage(byte[] message)
     {
         if (message.Length < 1)
-            throw new ArgumentException("Message too short");
+            throw new ArgumentException($"Message too short: expected at least 1 byte, got {message.Length}");
             
         var messageType = (MessageType)message[0];
         var offset = 1;
         
         // Read session ID
         if (message.Length < offset + 4)
-            throw new ArgumentException("Invalid message format");
+            throw new ArgumentException($"Invalid message format: expected at least {offset + 4} bytes for session ID length, got {message.Length}");
             
         var sessionIdLength = BitConverter.ToInt32(message, offset);
         offset += 4;
         
+        if (sessionIdLength < 0)
+            throw new ArgumentException($"Invalid session ID length: {sessionIdLength}");
+            
         if (message.Length < offset + sessionIdLength)
-            throw new ArgumentException("Invalid message format");
+            throw new ArgumentException($"Invalid message format: expected at least {offset + sessionIdLength} bytes for session ID, got {message.Length}");
             
         var sessionId = Encoding.UTF8.GetString(message, offset, sessionIdLength);
         offset += sessionIdLength;
         
         // Read remaining data
-        var remainingData = new byte[message.Length - offset];
-        Array.Copy(message, offset, remainingData, 0, remainingData.Length);
+        var remainingDataLength = message.Length - offset;
+        var remainingData = new byte[remainingDataLength];
+        
+        if (remainingDataLength > 0)
+        {
+            Array.Copy(message, offset, remainingData, 0, remainingDataLength);
+        }
         
         return (messageType, sessionId, remainingData);
     }
@@ -164,12 +172,28 @@ public static class BinaryMessage
     public static (byte[] audioData, int dataLength) ParseAudioChunkData(byte[] data)
     {
         if (data.Length < 4)
-            throw new ArgumentException("Invalid audio chunk data");
+            throw new ArgumentException($"Invalid audio chunk data: expected at least 4 bytes for length, got {data.Length}");
             
         var audioLength = BitConverter.ToInt32(data, 0);
-        var audioData = new byte[audioLength];
-        Array.Copy(data, 4, audioData, 0, audioLength);
         
-        return (audioData, audioLength);
+        if (audioLength < 0)
+            throw new ArgumentException($"Invalid audio length: {audioLength}");
+            
+        // Calculate the actual available audio data (total data minus 4-byte length field)
+        var availableAudioBytes = data.Length - 4;
+        
+        // Use the minimum of declared length and available bytes to handle partial chunks gracefully
+        var actualAudioLength = Math.Min(audioLength, availableAudioBytes);
+        
+        if (actualAudioLength < 0)
+            throw new ArgumentException($"Invalid audio data: not enough bytes available. Expected at least 4 bytes for length field, got {data.Length}");
+        
+        var audioData = new byte[actualAudioLength];
+        if (actualAudioLength > 0)
+        {
+            Array.Copy(data, 4, audioData, 0, actualAudioLength);
+        }
+        
+        return (audioData, actualAudioLength);
     }
 } 

@@ -50,24 +50,47 @@ public class WebSocketManager
 
     private async Task HandleWebSocketMessages(WebSocket webSocket, string sessionId)
     {
-        var buffer = new byte[1024 * 4]; // 4KB buffer
+        var buffer = new byte[1024 * 8]; // 8KB buffer to handle larger audio chunks
         
         while (webSocket.State == WebSocketState.Open)
         {
-            var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
-            
-            if (result.MessageType == WebSocketMessageType.Close)
+            try
             {
-                await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+                var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                
+                if (result.MessageType == WebSocketMessageType.Close)
+                {
+                    _logger.LogInformation("🔌 WebSocket close requested for session: {SessionId}", sessionId);
+                    await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+                    break;
+                }
+                
+                if (result.MessageType == WebSocketMessageType.Binary)
+                {
+                    _logger.LogDebug("🔍 Received WebSocket binary message: {Count} bytes, EndOfMessage: {EndOfMessage}", 
+                        result.Count, result.EndOfMessage);
+                    
+                    if (!result.EndOfMessage)
+                    {
+                        _logger.LogWarning("⚠️ Received partial WebSocket message - this implementation doesn't support message fragmentation");
+                        // For now, we'll process partial messages, but this could cause issues
+                    }
+                    
+                    var messageBytes = new byte[result.Count];
+                    Array.Copy(buffer, 0, messageBytes, 0, result.Count);
+                    
+                    await ProcessBinaryMessage(messageBytes, sessionId);
+                }
+            }
+            catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
+            {
+                _logger.LogInformation("🔌 WebSocket connection closed prematurely for session: {SessionId}", sessionId);
                 break;
             }
-            
-            if (result.MessageType == WebSocketMessageType.Binary)
+            catch (Exception ex)
             {
-                var messageBytes = new byte[result.Count];
-                Array.Copy(buffer, 0, messageBytes, 0, result.Count);
-                
-                await ProcessBinaryMessage(messageBytes, sessionId);
+                _logger.LogError(ex, "❌ Error in WebSocket message loop for session: {SessionId}", sessionId);
+                break;
             }
         }
     }
@@ -76,10 +99,13 @@ public class WebSocketManager
     {
         try
         {
-            var (messageType, messagSessionId, data) = BinaryMessage.ParseMessage(messageBytes);
+            _logger.LogDebug("🔍 ProcessBinaryMessage: Processing {MessageLength} bytes for session: {SessionId}", 
+                messageBytes.Length, sessionId);
+                
+            var (messageType, parsedSessionId, data) = BinaryMessage.ParseMessage(messageBytes);
             
-            _logger.LogInformation("📨 Received message type: {MessageType} for session: {SessionId}", 
-                messageType, sessionId);
+            _logger.LogInformation("📨 Received message type: {MessageType} from session: {ParsedSessionId} (current: {SessionId}), data length: {DataLength}", 
+                messageType, parsedSessionId, sessionId, data.Length);
             
             switch (messageType)
             {
@@ -98,7 +124,14 @@ public class WebSocketManager
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ Error processing binary message: {Message}", ex.Message);
+            _logger.LogError(ex, "❌ Error processing binary message: {Message} | Message length: {MessageLength} | Session: {SessionId}", 
+                ex.Message, messageBytes.Length, sessionId);
+                
+            // Log the raw message bytes for debugging (first 50 bytes)
+            var bytesToLog = Math.Min(50, messageBytes.Length);
+            var hexBytes = string.Join(" ", messageBytes.Take(bytesToLog).Select(b => b.ToString("X2")));
+            _logger.LogDebug("🔍 Raw message bytes (first {BytesToLog}): {HexBytes}", bytesToLog, hexBytes);
+            
             await SendErrorMessage(sessionId, $"Error processing message: {ex.Message}");
         }
     }
@@ -107,21 +140,34 @@ public class WebSocketManager
     {
         try
         {
+            _logger.LogDebug("🔍 HandleAudioChunk: Processing {DataLength} bytes for session: {SessionId}", 
+                data.Length, sessionId);
+            
+            // Log the first few bytes of data for debugging
+            if (data.Length >= 4)
+            {
+                var declaredLength = BitConverter.ToInt32(data, 0);
+                _logger.LogDebug("🔍 Audio chunk declares {DeclaredLength} bytes of audio data, total message is {TotalLength} bytes", 
+                    declaredLength, data.Length);
+            }
+                
             var (audioData, audioLength) = BinaryMessage.ParseAudioChunkData(data);
             
             if (!_audioBuffers.ContainsKey(sessionId))
             {
                 _audioBuffers[sessionId] = new List<byte>();
+                _logger.LogDebug("🔍 Created new audio buffer for session: {SessionId}", sessionId);
             }
             
             _audioBuffers[sessionId].AddRange(audioData);
             
-            _logger.LogInformation("🎵 Received audio chunk: {Length} bytes, total: {TotalLength} bytes for session: {SessionId}", 
+            _logger.LogInformation("🎵 Received audio chunk: {Length} bytes, total buffer: {TotalLength} bytes for session: {SessionId}", 
                 audioLength, _audioBuffers[sessionId].Count, sessionId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ Error handling audio chunk: {Message}", ex.Message);
+            _logger.LogError(ex, "❌ Error handling audio chunk: {Message} | Data length: {DataLength} | Session: {SessionId}", 
+                ex.Message, data.Length, sessionId);
             await SendErrorMessage(sessionId, $"Error handling audio chunk: {ex.Message}");
         }
     }

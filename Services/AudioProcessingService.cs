@@ -180,7 +180,7 @@ public class AudioProcessingService
         try
         {
             Console.WriteLine($"🔄 [AudioProcessor] Starting audio to speech processing for session: {sessionId}");
-            Console.WriteLine($"📦 [AudioProcessor] Processing audio data - Size: {audioData.Length} bytes");
+            Console.WriteLine($"📦 [AudioProcessor] Processing WebM audio data - Size: {audioData.Length} bytes");
             
             // Transcribe audio using OpenAI Whisper
             var transcribedText = await _openAIService.TranscribeAudioAsync(audioData);

@@ -214,6 +214,8 @@ class FoodRecommenderApp {
         const sessionBytes = new TextEncoder().encode(this.sessionId);
         const totalLength = 1 + 4 + sessionBytes.length + 4 + audioData.length;
         
+        console.log(`🔧 [Client] Creating audio chunk message: sessionId="${this.sessionId}" (${sessionBytes.length} bytes), audioData=${audioData.length} bytes, total=${totalLength} bytes`);
+        
         const message = new ArrayBuffer(totalLength);
         const view = new DataView(message);
         const uint8View = new Uint8Array(message);
@@ -235,7 +237,11 @@ class FoodRecommenderApp {
         offset += 4;
         
         // Write audio data
-        uint8View.set(audioData, offset);
+        if (audioData.length > 0) {
+            uint8View.set(audioData, offset);
+        }
+        
+        console.log(`🔧 [Client] Audio chunk message created successfully: ${totalLength} bytes`);
         
         return message;
     }
@@ -274,9 +280,13 @@ class FoodRecommenderApp {
             this.recommendations.textContent = "Listening for your request...";
             this.audioStatus.textContent = "Recording audio...";
 
-            this.mediaRecorder = new MediaRecorder(stream, {
-                mimeType: 'audio/webm;codecs=opus'
-            });
+            // Optimize WebM settings for minimal bandwidth and good quality
+            const mediaRecorderOptions = {
+                mimeType: 'audio/webm;codecs=opus',
+                audioBitsPerSecond: 32000 // 32kbps - excellent quality for speech, much smaller than default
+            };
+            
+            this.mediaRecorder = new MediaRecorder(stream, mediaRecorderOptions);
 
             this.mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
@@ -330,7 +340,7 @@ class FoodRecommenderApp {
             // Combine all audio chunks into a single blob
             const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
             
-            console.log(`📦 [Client] Combined audio blob size: ${audioBlob.size} bytes`);
+            console.log(`📦 [Client] Combined audio blob: ${audioBlob.size} bytes (WebM/Opus format)`);
             
             // Convert to array buffer
             const arrayBuffer = await audioBlob.arrayBuffer();
