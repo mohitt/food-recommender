@@ -38,8 +38,8 @@ public class AudioHub : Hub
 
             var sessionId = string.IsNullOrEmpty(audioMessage.SessionId) ? Context.ConnectionId : audioMessage.SessionId;
             
-            // Add audio chunk to processing service
-            _audioProcessingService.AddAudioChunk(sessionId, audioMessage.AudioData);
+            // Convert int array to byte array and add audio chunk to processing service
+            _audioProcessingService.AddAudioChunk(sessionId, audioMessage.GetAudioBytes());
 
             // If this is the last chunk, process the complete audio
             if (audioMessage.IsLast)
@@ -77,7 +77,7 @@ public class AudioHub : Hub
                     var audioChunk = new
                     {
                         SessionId = response.SessionId,
-                        AudioData = chunk,
+                        AudioData = chunk.Select(b => (int)b).ToArray(),
                         ChunkIndex = chunkIndex,
                         TotalChunks = totalChunks,
                         IsLast = chunkIndex == totalChunks - 1
