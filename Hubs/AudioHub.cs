@@ -58,6 +58,33 @@ public class AudioHub : Hub
         }
     }
 
+    // New binary method for efficient audio transfer
+    public async Task SendAudioBinary(byte[] audioData, bool isLast, string sessionId)
+    {
+        try
+        {
+            var actualSessionId = string.IsNullOrEmpty(sessionId) ? Context.ConnectionId : sessionId;
+            
+            // Direct binary processing - no JSON conversion needed!
+            _audioProcessingService.AddAudioChunk(actualSessionId, audioData);
+
+            // If this is the last chunk, process the complete audio
+            if (isLast)
+            {
+                await Clients.Caller.SendAsync("ProcessingStarted", actualSessionId);
+                
+                var response = await _audioProcessingService.ProcessCompleteAudioAsync(actualSessionId);
+                
+                // Stream the audio response back as binary
+                await StreamAudioResponseBinary(response);
+            }
+        }
+        catch (Exception ex)
+        {
+            await Clients.Caller.SendAsync("Error", $"Error processing audio: {ex.Message}");
+        }
+    }
+
     private async Task StreamAudioResponse(FoodRecommendationResponse response)
     {
         try
@@ -84,6 +111,46 @@ public class AudioHub : Hub
                     };
 
                     await Clients.Caller.SendAsync("AudioChunk", JsonSerializer.Serialize(audioChunk));
+                    chunkIndex++;
+
+                    // Small delay to prevent overwhelming the client
+                    await Task.Delay(50);
+                }
+            }
+
+            await Clients.Caller.SendAsync("ProcessingComplete", response.SessionId);
+        }
+        catch (Exception ex)
+        {
+            await Clients.Caller.SendAsync("Error", $"Error streaming response: {ex.Message}");
+        }
+    }
+
+    private async Task StreamAudioResponseBinary(FoodRecommendationResponse response)
+    {
+        try
+        {
+            // Send the text response first
+            await Clients.Caller.SendAsync("TextResponse", response.ResponseText);
+
+            if (response.AudioData.Length > 0)
+            {
+                // Send metadata about the incoming binary audio
+                await Clients.Caller.SendAsync("AudioMetadata", new
+                {
+                    SessionId = response.SessionId,
+                    TotalSize = response.AudioData.Length,
+                    ChunkSize = 4096
+                });
+
+                // Stream binary audio data in chunks
+                var chunks = _audioProcessingService.CreateAudioChunks(response.AudioData);
+                var chunkIndex = 0;
+
+                foreach (var chunk in chunks)
+                {
+                    // Send each chunk as pure binary data
+                    await Clients.Caller.SendAsync("AudioChunkBinary", chunk, chunkIndex, chunkIndex == response.AudioData.Length / 4096);
                     chunkIndex++;
 
                     // Small delay to prevent overwhelming the client

@@ -62,6 +62,17 @@ class FoodRecommenderApp {
             this.handleAudioChunk(JSON.parse(audioChunkData));
         });
 
+        // New binary audio chunk handler
+        this.connection.on("AudioChunkBinary", (chunkData, chunkIndex, isLast) => {
+            this.handleAudioChunkBinary(chunkData, chunkIndex, isLast);
+        });
+
+        this.connection.on("AudioMetadata", (metadata) => {
+            console.log("Audio metadata received:", metadata);
+            this.audioMetadata = metadata;
+            this.responseAudioChunks = []; // Reset for new binary audio
+        });
+
         this.connection.on("ProcessingComplete", (sessionId) => {
             this.updateStatus("ready", "Ready to listen");
             this.audioStatus.textContent = "Audio response ready - click play to listen";
@@ -191,6 +202,32 @@ class FoodRecommenderApp {
             const end = Math.min(start + chunkSize, audioData.length);
             const chunk = audioData.slice(start, end);
             
+            try {
+                // Send binary data directly - much more efficient!
+                await this.connection.invoke("SendAudioBinary", chunk, i === totalChunks - 1, this.sessionId);
+                
+                // Small delay between chunks to prevent overwhelming the server
+                if (i < totalChunks - 1) {
+                    await this.delay(50);
+                }
+            } catch (error) {
+                console.error('Error sending audio chunk:', error);
+                this.updateStatus("ready", "Error sending audio");
+                return;
+            }
+        }
+    }
+
+    // Legacy method for backward compatibility
+    async sendAudioInChunksJSON(audioData) {
+        const chunkSize = 8192; // 8KB chunks
+        const totalChunks = Math.ceil(audioData.length / chunkSize);
+
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * chunkSize;
+            const end = Math.min(start + chunkSize, audioData.length);
+            const chunk = audioData.slice(start, end);
+            
             const audioMessage = {
                 Type: "audio",
                 AudioData: Array.from(chunk),
@@ -228,6 +265,27 @@ class FoodRecommenderApp {
         // If this is the last chunk, combine and play the audio
         if (audioChunk.IsLast) {
             this.combineAndPlayAudio();
+        }
+    }
+
+    handleAudioChunkBinary(chunkData, chunkIndex, isLast) {
+        // Store the binary audio chunk directly - no conversion needed!
+        this.responseAudioChunks.push({
+            data: new Uint8Array(chunkData),
+            index: chunkIndex,
+            isLast: isLast
+        });
+
+        // Update progress
+        if (this.audioMetadata) {
+            const totalChunks = Math.ceil(this.audioMetadata.TotalSize / this.audioMetadata.ChunkSize);
+            const progress = ((chunkIndex + 1) / totalChunks * 100).toFixed(0);
+            this.audioStatus.textContent = `Receiving binary audio: ${progress}%`;
+        }
+
+        // If this is the last chunk, combine and play the audio
+        if (isLast) {
+            this.combineAndPlayAudioBinary();
         }
     }
 
@@ -274,6 +332,52 @@ class FoodRecommenderApp {
         } catch (error) {
             console.error('Error combining audio chunks:', error);
             this.audioStatus.textContent = "Error playing audio response";
+        }
+    }
+
+    async combineAndPlayAudioBinary() {
+        try {
+            // Sort chunks by index to ensure proper order
+            this.responseAudioChunks.sort((a, b) => a.index - b.index);
+
+            // Calculate total length
+            const totalLength = this.responseAudioChunks.reduce((total, chunk) => total + chunk.data.length, 0);
+            
+            // Combine all binary chunks directly - much more efficient!
+            const combinedAudio = new Uint8Array(totalLength);
+            let offset = 0;
+            
+            for (const chunk of this.responseAudioChunks) {
+                combinedAudio.set(chunk.data, offset);
+                offset += chunk.data.length;
+            }
+
+            // Create blob and URL for audio playback
+            const audioBlob = new Blob([combinedAudio], { type: 'audio/mpeg' });
+            const audioUrl = URL.createObjectURL(audioBlob);
+            
+            // Set up the audio element
+            this.responseAudio.src = audioUrl;
+            this.responseAudio.load();
+            
+            // Auto-play the response (if browser allows)
+            try {
+                await this.responseAudio.play();
+                this.audioStatus.textContent = "Playing binary audio response";
+            } catch (playError) {
+                console.log("Auto-play prevented by browser:", playError);
+                this.audioStatus.textContent = "Binary audio response ready - click play to listen";
+            }
+
+            // Clean up old URL when audio ends
+            this.responseAudio.addEventListener('ended', () => {
+                URL.revokeObjectURL(audioUrl);
+                this.audioStatus.textContent = "Binary audio response finished";
+            }, { once: true });
+
+        } catch (error) {
+            console.error('Error combining binary audio chunks:', error);
+            this.audioStatus.textContent = "Error playing binary audio response";
         }
     }
 
